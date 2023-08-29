@@ -1,0 +1,222 @@
+name: "build"
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+jobs:
+
+  windows:
+    strategy:
+      matrix:
+        include:
+          - toolchain: 2019
+            runtime: MD
+            debug: false
+            cflags: "/MD /Zi /GL-"
+          - toolchain: 2019
+            runtime: MDd
+            debug: true
+            cflags: "/MDd /D_DEBUG /D_ITERATOR_DEBUG_LEVEL=2"
+
+    runs-on: windows-${{ matrix.toolchain }}
+    name: VS${{ matrix.toolchain }}_${{ matrix.runtime }}
+
+    steps:
+      - name: Setup Git
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch
+        shell: cmd
+        run: |
+          mkdir work
+          cd work
+          ..\depot_tools\fetch.bat crashpad
+
+      - name: Configure
+        shell: cmd
+        run: |
+          cd work
+          ..\depot_tools\gn.bat --root=crashpad "--args=is_debug=${{ matrix.debug }} extra_cflags=\"${{ matrix.cflags }}\"" gen out\Default
+
+      - name: Build
+        shell: cmd
+        run: |
+          cd work
+          ..\depot_tools\ninja.bat -C out\Default
+
+      - name: Install
+        shell: pwsh
+        run: |
+          cd work
+          mkdir ..\..\dist
+          mkdir ..\..\dist\include
+          mkdir ..\..\dist\include\crashpad
+          mkdir ..\..\dist\lib
+          mkdir ..\..\dist\bin
+          Copy-Item crashpad\client -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item crashpad\compat -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item crashpad\handler -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item crashpad\minidump -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item crashpad\snapshot -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item crashpad\util -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item crashpad\third_party\mini_chromium\mini_chromium\base -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          Copy-Item out\Default\gen\build -Filter *.h -Destination ..\..\dist\include\crashpad -Recurse
+          cp crashpad\third_party\mini_chromium\mini_chromium\build\*.h ..\..\dist\include\crashpad\build
+          cp out\Default\obj\client\*.lib ..\..\dist\lib
+          cp out\Default\obj\client\*.pdb ..\..\dist\lib
+          cp out\Default\obj\compat\*.lib ..\..\dist\lib
+          cp out\Default\obj\compat\*.pdb ..\..\dist\lib
+          cp out\Default\obj\handler\*.lib ..\..\dist\lib
+          cp out\Default\obj\handler\*.pdb ..\..\dist\lib
+          cp out\Default\obj\minidump\*.lib ..\..\dist\lib
+          cp out\Default\obj\minidump\*.pdb ..\..\dist\lib
+          cp out\Default\obj\snapshot\*.lib ..\..\dist\lib
+          cp out\Default\obj\snapshot\*.pdb ..\..\dist\lib
+          cp out\Default\obj\util\*.lib ..\..\dist\lib
+          cp out\Default\obj\util\*.pdb ..\..\dist\lib
+          cp out\Default\obj\third_party\mini_chromium\mini_chromium\base\*.lib ..\..\dist\lib
+          cp out\Default\obj\third_party\mini_chromium\mini_chromium\base\*.pdb ..\..\dist\lib
+          cp out\Default\base94_encoder.exe ..\..\dist\bin
+          cp out\Default\base94_encoder.pdb ..\..\dist\bin
+          cp out\Default\crashpad_database_util.exe ..\..\dist\bin
+          cp out\Default\crashpad_database_util.pdb ..\..\dist\bin
+          cp out\Default\crashpad_handler.exe ..\..\dist\bin
+          cp out\Default\crashpad_handler.pdb ..\..\dist\bin
+          cp out\Default\crashpad_http_upload.exe ..\..\dist\bin
+          cp out\Default\crashpad_http_upload.pdb ..\..\dist\bin
+          cp out\Default\dump_minidump_annotations.exe ..\..\dist\bin
+          cp out\Default\dump_minidump_annotations.pdb ..\..\dist\bin
+          cp out\Default\generate_dump.exe ..\..\dist\bin
+          cp out\Default\generate_dump.pdb ..\..\dist\bin
+          tree ..\..\dist /F /A
+
+      - name: Deploy
+        shell: pwsh
+        run: |
+          cd work\crashpad
+          $git_date = git show -s --date=format:'%Y%m%d' --format=%cd
+          $git_branch = "VS${{ matrix.toolchain }}_${{ matrix.runtime }}"
+          $git_tag = $git_date + "_" + $git_branch
+          cd ..\..
+          Remove-Item work -Recurse -Force
+          git checkout ${git_branch}
+          if (test-path include) {
+            rm -r include
+          }
+          if (test-path lib) {
+            rm -r lib
+          }
+          if (test-path bin) {
+            rm -r bin
+          }
+          mv ..\dist\include .
+          mv ..\dist\lib .
+          mv ..\dist\bin .
+          git add include
+          git add lib
+          git add bin
+          git config user.email "actions-bot@users.noreply.github.com"
+          git config user.name "actions-bot"
+          git commit -m"Deploy crashpad ${git_tag}"
+          git push -f origin ${git_branch}:${git_branch}
+          git tag -f ${git_tag}
+          git push origin :refs/tags/${git_tag}
+          git push origin ${git_tag}
+
+  macos:
+    runs-on: macos-11
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch
+        run: |
+          mkdir work
+          cd work
+          ../depot_tools/fetch crashpad
+
+      - name: Configure
+        run: |
+          cd work
+          ../depot_tools/gn --root=crashpad '--args=is_debug=false target_cpu="mac_universal"' gen out/Default
+
+      - name: Build
+        run: |
+          cd work
+          ../depot_tools/ninja -C out/Default
+
+      - name: Install
+        run: |
+          cd work
+          mkdir ../../dist
+          mkdir ../../dist/include
+          mkdir ../../dist/include/crashpad
+          mkdir ../../dist/lib
+          mkdir ../../dist/bin
+          ( cd crashpad && find client -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad && find compat -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad && find handler -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad && find minidump -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad && find snapshot -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad && find util -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad/third_party/mini_chromium/mini_chromium && find base -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd out/Default/gen && find build -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          ( cd crashpad/third_party/mini_chromium/mini_chromium && find build -name '*.h' | tar -cf - -T - ) | tar -xf - -C ../../dist/include/crashpad
+          cp out/Default/obj/client/lib*.a ../../dist/lib
+          cp out/Default/obj/handler/lib*.a ../../dist/lib
+          cp out/Default/obj/minidump/lib*.a ../../dist/lib
+          cp out/Default/obj/snapshot/lib*.a ../../dist/lib
+          cp out/Default/obj/util/lib*.a ../../dist/lib
+          cp out/Default/obj/third_party/mini_chromium/mini_chromium/base/lib*.a ../../dist/lib
+          cp out/Default/base94_encoder ../../dist/bin
+          cp out/Default/catch_exception_tool ../../dist/bin
+          cp out/Default/crashpad_database_util ../../dist/bin
+          cp out/Default/crashpad_handler ../../dist/bin
+          cp out/Default/crashpad_http_upload ../../dist/bin
+          cp out/Default/dump_minidump_annotations ../../dist/bin
+          cp out/Default/exception_port_tool ../../dist/bin
+          cp out/Default/generate_dump ../../dist/bin
+          cp out/Default/run_with_crashpad ../../dist/bin
+          find ../../dist
+
+      - name: Deploy
+        run: |
+          cd work/crashpad
+          git_date=$(git show -s --date=format:'%Y%m%d' --format=%cd)
+          git_branch=macos
+          git_tag="${git_date}_${git_branch}"
+          cd ../..
+          rm -rf work
+          git checkout ${git_branch}
+          [ -d include ] && rm -rf include
+          [ -d lib ] && rm -rf lib
+          [ -d bin ] && rm -rf bin
+          mv ../dist/include .
+          mv ../dist/lib .
+          mv ../dist/bin .
+          git add include
+          git add lib
+          git add bin
+          git config user.email "actions-bot@users.noreply.github.com"
+          git config user.name "actions-bot"
+          git commit -m"Deploy crashpad ${git_tag}"
+          git push -f origin ${git_branch}:${git_branch}
+          git tag -f ${git_tag}
+          git push origin :refs/tags/${git_tag}
+          git push origin ${git_tag}

@@ -6,14 +6,12 @@
 #define MINI_CHROMIUM_BASE_LOGGING_H_
 
 #include <errno.h>
+#include <stdint.h>
 
 #include <limits>
 #include <sstream>
 #include <string>
 
-#include "base/check.h"
-#include "base/check_op.h"
-#include "base/notreached.h"
 #include "build/build_config.h"
 
 namespace logging {
@@ -108,9 +106,12 @@ class LogMessage {
   LogMessage(const LogMessage&) = delete;
   LogMessage& operator=(const LogMessage&) = delete;
 
-  ~LogMessage();
+  virtual ~LogMessage();
 
   std::ostream& stream() { return stream_; }
+
+ protected:
+  void Flush();
 
  private:
   void Init(const char* function);

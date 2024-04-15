@@ -31,8 +31,13 @@ jobs:
           git config --global core.autocrlf false
           git config --global core.eol lf
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
@@ -129,35 +134,43 @@ jobs:
           git add bin
           git config user.email "actions-bot@users.noreply.github.com"
           git config user.name "actions-bot"
-          git commit -m"Deploy crashpad ${git_tag}"
+          git commit --allow-empty -m"Deploy crashpad ${git_tag}"
           git push -f origin ${git_branch}:${git_branch}
           git tag -f ${git_tag}
           git push origin :refs/tags/${git_tag}
           git push origin ${git_tag}
 
   macos:
-    runs-on: macos-11
+    runs-on: macos-13
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
           submodules: recursive
 
+      - name: Setup Python
+        run: |
+          sudo -H pip install setuptools
+          sudo -H pip install packaging
+
       - name: Fetch
         run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
           mkdir work
           cd work
           ../depot_tools/fetch crashpad
 
       - name: Configure
         run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
           cd work
           ../depot_tools/gn --root=crashpad '--args=is_debug=false target_cpu="mac_universal"' gen out/Default
 
       - name: Build
         run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
           cd work
           ../depot_tools/ninja -C out/Default
 
@@ -204,6 +217,7 @@ jobs:
           cd ../..
           rm -rf work
           git checkout ${git_branch}
+          rm -rf depot_tools
           [ -d include ] && rm -rf include
           [ -d lib ] && rm -rf lib
           [ -d bin ] && rm -rf bin
@@ -215,7 +229,51 @@ jobs:
           git add bin
           git config user.email "actions-bot@users.noreply.github.com"
           git config user.name "actions-bot"
-          git commit -m"Deploy crashpad ${git_tag}"
+          git commit --allow-empty -m"Deploy crashpad ${git_tag}"
+          git push -f origin ${git_branch}:${git_branch}
+          git tag -f ${git_tag}
+          git push origin :refs/tags/${git_tag}
+          git push origin ${git_tag}
+
+  source:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Fetch
+        run: |
+          export PATH="$(pwd)/depot_tools:$PATH"
+          mkdir work
+          cd work
+          ../depot_tools/fetch crashpad
+
+      - name: Install
+        run: |
+          cp -a work ../dist
+          cd ../dist
+          find -type d -name .git | xargs rm -rf
+          find -type f -name .gitignore | xargs rm -rf
+
+      - name: Deploy
+        run: |
+          cd work/crashpad
+          git_date=$(git show -s --date=format:'%Y%m%d' --format=%cd)
+          git_branch=linux_source
+          git_tag="${git_date}_${git_branch}"
+          cd ../..
+          rm -rf work
+          git checkout ${git_branch}
+          find -mindepth 1 -maxdepth 1 -not -name .git -print0 | xargs -0 rm -rf
+          find ../dist -mindepth 1 -maxdepth 1 -print0 | xargs -0 mv -t .
+          git add -A
+          git config user.email "actions-bot@users.noreply.github.com"
+          git config user.name "actions-bot"
+          git commit --allow-empty -m"Deploy crashpad ${git_tag}"
           git push -f origin ${git_branch}:${git_branch}
           git tag -f ${git_tag}
           git push origin :refs/tags/${git_tag}

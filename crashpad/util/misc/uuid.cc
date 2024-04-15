@@ -38,6 +38,8 @@
 #include <uuid/uuid.h>
 #endif  // BUILDFLAG(IS_APPLE)
 
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+
 namespace crashpad {
 
 static_assert(sizeof(UUID) == 16, "UUID must be 16 bytes");

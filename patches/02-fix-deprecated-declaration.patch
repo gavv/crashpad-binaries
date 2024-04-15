@@ -1,0 +1,25 @@
+From c0f8c56c85d253183bfc6c187a85a8376f00090a Mon Sep 17 00:00:00 2001
+From: Victor Gaydov <victor@enise.org>
+Date: Mon, 15 Apr 2024 22:57:55 +0400
+Subject: [PATCH] fix deprecated declaration
+
+---
+ crashpad/util/misc/uuid.cc | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/crashpad/util/misc/uuid.cc b/crashpad/util/misc/uuid.cc
+index 3013d7b2..1469dddf 100644
+--- a/crashpad/util/misc/uuid.cc
++++ b/crashpad/util/misc/uuid.cc
+@@ -38,6 +38,8 @@
+ #include <uuid/uuid.h>
+ #endif  // BUILDFLAG(IS_APPLE)
+ 
++#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
++
+ namespace crashpad {
+ 
+ static_assert(sizeof(UUID) == 16, "UUID must be 16 bytes");
+-- 
+2.39.2
+

@@ -255,9 +255,12 @@ jobs:
       - name: Install
         run: |
           cp -a work ../dist
+          cp -a patches ../
           cd ../dist
           find -type d -name .git | xargs rm -rf
           find -type f -name .gitignore | xargs rm -rf
+          patch -p1 < ../patches/01-fix-std-atomic.patch
+          patch -p1 < ../patches/02-fix-deprecated-declaration.patch
 
       - name: Deploy
         run: |
